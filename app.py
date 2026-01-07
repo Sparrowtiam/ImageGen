@@ -16,13 +16,8 @@ import io
 import os
 from pathlib import Path
 
-# Import custom modules
-from image_generator import initialize_local_generator, generate_image_local, HAS_LOCAL_MODELS
-from style_transfer import apply_style_transfer
-
-
 # ============================================================================
-# Page Configuration
+# Page Configuration (MUST be before any st calls)
 # ============================================================================
 
 st.set_page_config(
@@ -31,6 +26,25 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Try to import PyTorch (for system info display)
+try:
+    import torch
+    HAS_TORCH = True
+except (ImportError, OSError):
+    HAS_TORCH = False
+
+# Import custom modules
+try:
+    from image_generator import initialize_local_generator, generate_image_local, HAS_LOCAL_MODELS
+except (ImportError, OSError):
+    HAS_LOCAL_MODELS = False
+
+try:
+    from style_transfer import apply_style_transfer
+except (ImportError, OSError) as e:
+    st.error(f"Error importing style transfer: {e}")
+    st.stop()
 
 # ============================================================================
 # Custom CSS Styling
@@ -85,13 +99,17 @@ def load_image_generator():
             return None
 
 
-def generate_image_demo(prompt):
+def generate_image_demo(prompt, num_steps=50, guidance=7.5, height=512, width=512):
     """
     Generate a demo image using available methods.
     Tries local generation first, then suggests APIs.
     
     Args:
         prompt (str): Text prompt for image generation
+        num_steps (int): Number of inference steps
+        guidance (float): Guidance scale
+        height (int): Image height
+        width (int): Image width
     
     Returns:
         PIL.Image: Generated image or placeholder
@@ -104,10 +122,10 @@ def generate_image_demo(prompt):
                 return generate_image_local(
                     prompt=prompt,
                     pipe=pipeline,
-                    num_inference_steps=50,
-                    guidance_scale=7.5,
-                    height=512,
-                    width=512
+                    num_inference_steps=num_steps,
+                    guidance_scale=guidance,
+                    height=height,
+                    width=width
                 )
         
         # If no local models, suggest API integration
@@ -228,7 +246,13 @@ def main():
                 with st.spinner("🎨 Generating your image..."):
                     try:
                         # Generate the image
-                        image = generate_image_demo(prompt)
+                        image = generate_image_demo(
+                            prompt=prompt,
+                            num_steps=num_steps,
+                            guidance=guidance,
+                            height=height,
+                            width=width
+                        )
                         
                         # Store in session state
                         st.session_state.generated_image = image
@@ -269,10 +293,11 @@ def main():
                     filepath = output_dir / filename
                     
                     # Save the image
-                    if save_image(st.session_state.generated_image, str(filepath)):
+                    try:
+                        st.session_state.generated_image.save(str(filepath))
                         st.success(f"✅ Saved to `{filepath}`")
-                    else:
-                        st.error("Failed to save image")
+                    except Exception as e:
+                        st.error(f"Failed to save image: {e}")
     
     # ========================================================================
     # TAB 2: Style Transfer
@@ -379,10 +404,11 @@ def main():
                     filename = f"stylized_{selected_style}_{timestamp}.png"
                     filepath = output_dir / filename
                     
-                    if save_image(st.session_state.stylized_image, str(filepath)):
+                    try:
+                        st.session_state.stylized_image.save(str(filepath))
                         st.success(f"✅ Saved to `{filepath}`")
-                    else:
-                        st.error("Failed to save image")
+                    except Exception as e:
+                        st.error(f"Failed to save image: {e}")
     
     # ========================================================================
     # Sidebar Information
@@ -423,10 +449,16 @@ def main():
         """)
         
         # Display GPU availability
-        if torch.cuda.is_available():
-            st.success(f"✅ GPU Available: {torch.cuda.get_device_name(0)}")
+        if HAS_TORCH:
+            try:
+                if torch.cuda.is_available():
+                    st.success(f"✅ GPU Available: {torch.cuda.get_device_name(0)}")
+                else:
+                    st.info("⚠️ Using CPU (GPU would be faster)")
+            except:
+                st.info("⚠️ Using CPU")
         else:
-            st.info("⚠️ Using CPU (GPU would be faster)")
+            st.info("⚠️ CPU Mode (PyTorch not installed)")
         
         st.markdown("---")
         st.markdown("### System Info")

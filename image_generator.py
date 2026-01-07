@@ -22,7 +22,7 @@ try:
     import torch
     from diffusers import StableDiffusionPipeline
     HAS_LOCAL_MODELS = True
-except ImportError:
+except (ImportError, OSError):
     HAS_LOCAL_MODELS = False
 
 
