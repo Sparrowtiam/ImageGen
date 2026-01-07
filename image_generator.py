@@ -1,73 +1,99 @@
 """
 Image Generation Module
 
-This module provides functions to generate images from text prompts
-using Stable Diffusion through the Hugging Face diffusers library.
+This module provides utilities for image generation.
+For Streamlit Cloud deployment, use API-based services instead of local models.
+
+Recommended services:
+- Replicate.com: Great free tier for Stable Diffusion
+- Hugging Face Inference API: Easy integration
+- OpenAI DALL-E: Premium quality
 """
 
-import torch
-from diffusers import StableDiffusionPipeline
-from PIL import Image
 import os
+import requests
+from PIL import Image
+from io import BytesIO
 
 
-def initialize_generator(model_id="runwayml/stable-diffusion-v1-5"):
+def generate_with_replicate(prompt, api_token=None, num_inference_steps=50):
     """
-    Initialize the Stable Diffusion pipeline for image generation.
+    Generate image using Replicate.com API (recommended for Streamlit Cloud).
     
     Args:
-        model_id (str): The Hugging Face model ID to use for image generation.
-                       Default is Stable Diffusion v1.5
+        prompt (str): Text description for image generation
+        api_token (str): Replicate API token (from environment or parameter)
+        num_inference_steps (int): Number of inference steps
     
     Returns:
-        StableDiffusionPipeline: Initialized pipeline ready for inference
+        PIL.Image: Generated image or None
     """
-    # Check if CUDA is available for faster processing
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    try:
+        import replicate
+        
+        # Get API token from parameter or environment
+        token = api_token or os.getenv("REPLICATE_API_TOKEN")
+        
+        if not token:
+            return None
+        
+        # Set API token
+        replicate.Client(api_token=token)
+        
+        # Run the model
+        output = replicate.run(
+            "stability-ai/stable-diffusion:ac732df83cea7fff18b8472768c88ad041f529f2d4ee4cb280350045e9c63713",
+            input={"prompt": prompt, "num_inference_steps": num_inference_steps}
+        )
+        
+        # Download and open the image
+        if output:
+            response = requests.get(output[0])
+            image = Image.open(BytesIO(response.content))
+            return image
+            
+    except Exception as e:
+        print(f"Error generating image with Replicate: {e}")
     
-    # Load the pre-trained model
-    pipe = StableDiffusionPipeline.from_pretrained(
-        model_id,
-        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-        safety_checker=None  # Disable for faster processing
-    )
-    
-    # Move pipeline to the appropriate device
-    pipe = pipe.to(device)
-    
-    # Enable memory optimization
-    if device == "cuda":
-        pipe.enable_attention_slicing()
-    
-    return pipe
+    return None
 
 
-def generate_image(prompt, pipe, num_inference_steps=50, guidance_scale=7.5, height=512, width=512):
+def generate_with_huggingface(prompt, api_token=None):
     """
-    Generate an image from a text prompt using Stable Diffusion.
+    Generate image using Hugging Face Inference API.
     
     Args:
-        prompt (str): Text description of the image to generate
-        pipe (StableDiffusionPipeline): The initialized pipeline
-        num_inference_steps (int): Number of denoising steps (higher = better quality but slower)
-        guidance_scale (float): How strongly the model follows the prompt (higher = more adherent)
-        height (int): Height of generated image in pixels
-        width (int): Width of generated image in pixels
+        prompt (str): Text description for image generation
+        api_token (str): Hugging Face API token
     
     Returns:
-        PIL.Image: Generated image
+        PIL.Image: Generated image or None
     """
-    # Generate the image
-    with torch.no_grad():
-        image = pipe(
-            prompt=prompt,
-            height=height,
-            width=width,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale
-        ).images[0]
+    try:
+        # Get API token from parameter or environment
+        token = api_token or os.getenv("HUGGINGFACE_API_KEY")
+        
+        if not token:
+            return None
+        
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        # Use Hugging Face Inference API
+        API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
+        
+        def query(payload):
+            response = requests.post(API_URL, headers=headers, json=payload)
+            return response.content
+        
+        image_bytes = query({"inputs": prompt})
+        image = Image.open(BytesIO(image_bytes))
+        
+        return image
+        
+    except Exception as e:
+        print(f"Error generating image with Hugging Face: {e}")
     
-    return image
+    return None
 
 
 def save_image(image, filepath):

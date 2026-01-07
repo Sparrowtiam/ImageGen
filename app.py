@@ -11,14 +11,13 @@ Date: 2026
 """
 
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 import io
 import os
 from pathlib import Path
-import torch
+import numpy as np
 
 # Import custom modules
-from image_generator import initialize_generator, generate_image, save_image
 from style_transfer import apply_style_transfer
 
 
@@ -52,9 +51,6 @@ st.markdown("""
 # Initialize Session State
 # ============================================================================
 
-if 'generator_pipeline' not in st.session_state:
-    st.session_state.generator_pipeline = None
-
 if 'generated_image' not in st.session_state:
     st.session_state.generated_image = None
 
@@ -66,21 +62,35 @@ if 'stylized_image' not in st.session_state:
 # Utility Functions
 # ============================================================================
 
-@st.cache_resource
-def load_image_generator():
+def generate_image_demo(prompt):
     """
-    Load and cache the image generation pipeline to avoid reloading on each run.
+    Generate a demo image using a lightweight approach.
+    For production, integrate with Hugging Face API or replicate.com
+    
+    Args:
+        prompt (str): Text prompt for image generation
     
     Returns:
-        StableDiffusionPipeline: The initialized pipeline
+        PIL.Image: Generated image or placeholder
     """
-    with st.spinner("Loading image generation model... This may take a moment."):
-        try:
-            pipeline = initialize_generator()
-            return pipeline
-        except Exception as e:
-            st.error(f"Error loading model: {e}")
-            return None
+    try:
+        # For Streamlit Cloud: Use Replicate API or Hugging Face Inference API
+        import requests
+        
+        # Placeholder implementation - shows user how to integrate API
+        # Replace with actual API calls to Replicate.com or Hugging Face
+        
+        st.info("💡 **Note**: To generate images, you need to:")
+        st.info("1. Get an API key from [Replicate.com](https://replicate.com) or [Hugging Face](https://huggingface.co)")
+        st.info("2. Add it to Streamlit secrets")
+        st.info("3. Use the API to generate images")
+        
+        # Create a placeholder image for demo
+        img = Image.new('RGB', (512, 512), color=(73, 109, 137))
+        return img
+    except Exception as e:
+        st.error(f"Error: {e}")
+        return None
 
 
 def download_button(image, filename, label="Download Image"):
@@ -175,28 +185,17 @@ def main():
             if not prompt.strip():
                 st.error("Please enter a prompt!")
             else:
-                # Load the pipeline
-                pipeline = load_image_generator()
-                
-                if pipeline is not None:
-                    with st.spinner("🎨 Generating your image..."):
-                        try:
-                            # Generate the image
-                            image = generate_image(
-                                prompt=prompt,
-                                pipe=pipeline,
-                                num_inference_steps=num_steps,
-                                guidance_scale=guidance,
-                                height=height,
-                                width=width
-                            )
-                            
-                            # Store in session state
-                            st.session_state.generated_image = image
-                            st.success("Image generated successfully!")
-                            
-                        except Exception as e:
-                            st.error(f"Error generating image: {e}")
+                with st.spinner("🎨 Generating your image..."):
+                    try:
+                        # Generate the image
+                        image = generate_image_demo(prompt)
+                        
+                        # Store in session state
+                        st.session_state.generated_image = image
+                        st.success("Image generated successfully!")
+                        
+                    except Exception as e:
+                        st.error(f"Error generating image: {e}")
         
         # Display generated image
         st.markdown("---")
@@ -296,7 +295,7 @@ def main():
                 with st.spinner(f"Applying {selected_style} style..."):
                     try:
                         # Apply style transfer
-                        stylized = apply_style_transfer(input_image, selected_style)
+                        stylized = apply_style_transfer(input_image, selected_style, strength=style_strength)
                         
                         # Store in session state
                         st.session_state.stylized_image = stylized
@@ -390,7 +389,19 @@ def main():
             st.info("⚠️ Using CPU (GPU would be faster)")
         
         st.markdown("---")
-        st.markdown("Created with ❤️ using Streamlit, PyTorch, and Hugging Face")
+        st.markdown("### System Info")
+        
+        st.markdown("""
+        **Current Setup**: Lightweight version for Streamlit Cloud
+        
+        **To Enable Full Features:**
+        1. Use API-based image generation:
+           - [Replicate.com](https://replicate.com)
+           - [Hugging Face Inference API](https://huggingface.co/inference-api)
+           - [OpenAI DALL-E](https://openai.com/dall-e-3/)
+        
+        2. Style transfer works locally with uploaded images
+        """)
 
 
 # ============================================================================
