@@ -15,9 +15,9 @@ from PIL import Image, ImageEnhance, ImageFilter
 import io
 import os
 from pathlib import Path
-import numpy as np
 
 # Import custom modules
+from image_generator import initialize_local_generator, generate_image_local, HAS_LOCAL_MODELS
 from style_transfer import apply_style_transfer
 
 
@@ -51,6 +51,9 @@ st.markdown("""
 # Initialize Session State
 # ============================================================================
 
+if 'generator_pipeline' not in st.session_state:
+    st.session_state.generator_pipeline = None
+
 if 'generated_image' not in st.session_state:
     st.session_state.generated_image = None
 
@@ -62,10 +65,30 @@ if 'stylized_image' not in st.session_state:
 # Utility Functions
 # ============================================================================
 
+@st.cache_resource
+def load_image_generator():
+    """
+    Load and cache the image generation pipeline (if available locally).
+    
+    Returns:
+        pipeline or None: The initialized pipeline if PyTorch is available
+    """
+    if not HAS_LOCAL_MODELS:
+        return None
+    
+    with st.spinner("Loading image generation model... This may take a moment."):
+        try:
+            pipeline = initialize_local_generator()
+            return pipeline
+        except Exception as e:
+            st.error(f"Error loading model: {e}")
+            return None
+
+
 def generate_image_demo(prompt):
     """
-    Generate a demo image using a lightweight approach.
-    For production, integrate with Hugging Face API or replicate.com
+    Generate a demo image using available methods.
+    Tries local generation first, then suggests APIs.
     
     Args:
         prompt (str): Text prompt for image generation
@@ -74,18 +97,35 @@ def generate_image_demo(prompt):
         PIL.Image: Generated image or placeholder
     """
     try:
-        # For Streamlit Cloud: Use Replicate API or Hugging Face Inference API
-        import requests
+        # Check if local models are available
+        if HAS_LOCAL_MODELS:
+            pipeline = load_image_generator()
+            if pipeline is not None:
+                return generate_image_local(
+                    prompt=prompt,
+                    pipe=pipeline,
+                    num_inference_steps=50,
+                    guidance_scale=7.5,
+                    height=512,
+                    width=512
+                )
         
-        # Placeholder implementation - shows user how to integrate API
-        # Replace with actual API calls to Replicate.com or Hugging Face
+        # If no local models, suggest API integration
+        st.info("💡 **Full Image Generation Available Locally!**")
+        st.info("""
+        To use full features locally:
+        ```bash
+        pip install -r requirements-local.txt
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+        streamlit run app.py
+        ```
         
-        st.info("💡 **Note**: To generate images, you need to:")
-        st.info("1. Get an API key from [Replicate.com](https://replicate.com) or [Hugging Face](https://huggingface.co)")
-        st.info("2. Add it to Streamlit secrets")
-        st.info("3. Use the API to generate images")
+        For Streamlit Cloud, configure API keys in Streamlit Secrets:
+        - [Replicate.com](https://replicate.com)
+        - [Hugging Face Inference API](https://huggingface.co/inference-api)
+        """)
         
-        # Create a placeholder image for demo
+        # Return placeholder
         img = Image.new('RGB', (512, 512), color=(73, 109, 137))
         return img
     except Exception as e:
@@ -391,16 +431,23 @@ def main():
         st.markdown("---")
         st.markdown("### System Info")
         
+        if HAS_LOCAL_MODELS:
+            st.success("✅ PyTorch Available - Full image generation enabled!")
+        else:
+            st.warning("⚠️ PyTorch not installed - Using lightweight mode")
+            st.info("""
+            **For full features locally:**
+            ```bash
+            pip install -r requirements-local.txt
+            pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+            ```
+            """)
+        
         st.markdown("""
-        **Current Setup**: Lightweight version for Streamlit Cloud
-        
-        **To Enable Full Features:**
-        1. Use API-based image generation:
-           - [Replicate.com](https://replicate.com)
-           - [Hugging Face Inference API](https://huggingface.co/inference-api)
-           - [OpenAI DALL-E](https://openai.com/dall-e-3/)
-        
-        2. Style transfer works locally with uploaded images
+        **Setup Options:**
+        - **Local (Full Features)**: Install requirements-local.txt + PyTorch
+        - **Streamlit Cloud (Lightweight)**: Uses requirements.txt only
+        - **API Integration**: Configure Replicate/Hugging Face tokens in Secrets
         """)
 
 

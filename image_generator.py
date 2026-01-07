@@ -2,9 +2,11 @@
 Image Generation Module
 
 This module provides utilities for image generation.
-For Streamlit Cloud deployment, use API-based services instead of local models.
 
-Recommended services:
+For local development: Use Stable Diffusion via Hugging Face (requires PyTorch)
+For Streamlit Cloud: Use API-based services
+
+Recommended API services:
 - Replicate.com: Great free tier for Stable Diffusion
 - Hugging Face Inference API: Easy integration
 - OpenAI DALL-E: Premium quality
@@ -15,8 +17,85 @@ import requests
 from PIL import Image
 from io import BytesIO
 
+# Try to import local models (only available with requirements-local.txt)
+try:
+    import torch
+    from diffusers import StableDiffusionPipeline
+    HAS_LOCAL_MODELS = True
+except ImportError:
+    HAS_LOCAL_MODELS = False
 
-def generate_with_replicate(prompt, api_token=None, num_inference_steps=50):
+
+def initialize_local_generator(model_id="runwayml/stable-diffusion-v1-5"):
+    """
+    Initialize the Stable Diffusion pipeline for local image generation.
+    
+    Only works with requirements-local.txt installed (includes PyTorch).
+    
+    Args:
+        model_id (str): The Hugging Face model ID to use
+    
+    Returns:
+        StableDiffusionPipeline: Initialized pipeline or None if not available
+    """
+    if not HAS_LOCAL_MODELS:
+        return None
+    
+    try:
+        # Check if CUDA is available for faster processing
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # Load the pre-trained model
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_id,
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+            safety_checker=None
+        )
+        
+        # Move pipeline to appropriate device
+        pipe = pipe.to(device)
+        
+        # Enable memory optimization
+        if device == "cuda":
+            pipe.enable_attention_slicing()
+        
+        return pipe
+    except Exception as e:
+        print(f"Error initializing local generator: {e}")
+        return None
+
+
+def generate_image_local(prompt, pipe, num_inference_steps=50, guidance_scale=7.5, height=512, width=512):
+    """
+    Generate an image from a text prompt using local Stable Diffusion.
+    
+    Args:
+        prompt (str): Text description of the image to generate
+        pipe: The initialized Stable Diffusion pipeline
+        num_inference_steps (int): Number of denoising steps
+        guidance_scale (float): How strongly the model follows the prompt
+        height (int): Height of generated image in pixels
+        width (int): Width of generated image in pixels
+    
+    Returns:
+        PIL.Image: Generated image
+    """
+    if pipe is None:
+        return None
+    
+    try:
+        with torch.no_grad():
+            image = pipe(
+                prompt=prompt,
+                height=height,
+                width=width,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale
+            ).images[0]
+        return image
+    except Exception as e:
+        print(f"Error generating image: {e}")
+        return None
     """
     Generate image using Replicate.com API (recommended for Streamlit Cloud).
     

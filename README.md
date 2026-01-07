@@ -28,10 +28,13 @@ A powerful, user-friendly Streamlit application that combines AI image generatio
 ```
 Bot-712/
 ├── app.py                    # Main Streamlit application
-├── image_generator.py        # Image generation utilities
+├── image_generator.py        # Image generation utilities (local + API)
 ├── style_transfer.py         # Style transfer functionality
-├── requirements.txt          # Python dependencies
+├── requirements.txt          # Lightweight dependencies (for cloud)
+├── requirements-local.txt    # Full dependencies (for local development with PyTorch)
 ├── .env.example             # Environment configuration template
+├── .streamlit/
+│   └── config.toml          # Streamlit configuration
 ├── README.md                # This file
 ├── generated_images/        # Output folder for generated images
 └── stylized_images/         # Output folder for stylized images
@@ -42,69 +45,89 @@ Bot-712/
 ### Prerequisites
 - Python 3.8 or higher
 - Virtual environment (recommended)
-- 8GB+ RAM (16GB+ recommended for GPU)
-- GPU support is optional but recommended for faster processing
+- RAM requirements:
+  - **Lightweight mode**: 4GB RAM minimum
+  - **Full local mode (with PyTorch)**: 8GB+ RAM recommended
+- GPU support optional but recommended for local PyTorch setup
 
-### Step 1: Clone or Setup the Project
-Navigate to your project directory:
+### Two Installation Options
+
+#### Option 1: Local Development (Full Features with PyTorch) ⚡
+
+Best for: Full image generation on your computer
+
 ```bash
-cd Bot-712
+# Create Python 3.11 environment
+python3.11 -m venv venv
+
+# Activate virtual environment
+# Windows (PowerShell):
+.\venv\Scripts\Activate.ps1
+# Windows (Command Prompt):
+venv\Scripts\activate.bat
+# macOS/Linux:
+source venv/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip setuptools wheel
+
+# Install full dependencies
+pip install -r requirements-local.txt
+
+# Install PyTorch (CPU version, change cu121 to cpu if no GPU)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Run the app
+streamlit run app.py
 ```
 
-### Step 2: Activate Virtual Environment
-If you haven't created one yet:
+**GPU Support (NVIDIA):**
+If you have an NVIDIA GPU and CUDA installed:
 ```bash
+# Already included in the PyTorch command above with cu121 (CUDA 12.1)
+# For other CUDA versions:
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118  # CUDA 11.8
+```
+
+#### Option 2: Lightweight/Cloud Deployment 🌐
+
+Best for: Streamlit Cloud or minimal dependencies
+
+```bash
+# Create virtual environment
 python -m venv venv
-```
 
-Activate the virtual environment:
-- **Windows (PowerShell):**
-  ```bash
-  .\venv\Scripts\Activate.ps1
-  ```
-- **Windows (Command Prompt):**
-  ```bash
-  venv\Scripts\activate.bat
-  ```
-- **macOS/Linux:**
-  ```bash
-  source venv/bin/activate
-  ```
+# Activate
+.\venv\Scripts\Activate.ps1  # Windows
+# or
+source venv/bin/activate  # macOS/Linux
 
-### Step 3: Install Dependencies
-```bash
+# Install lightweight dependencies
 pip install -r requirements.txt
+
+# Run the app
+streamlit run app.py
 ```
 
-This will install:
-- **streamlit**: Web framework for the GUI
-- **torch & torchvision**: Deep learning libraries for image processing
-- **diffusers**: Hugging Face library for Stable Diffusion
-- **transformers**: NLP models and utilities
-- **Pillow**: Image processing library
-- **And other dependencies**
-
-### Step 4: (Optional) Configure Environment Variables
-Copy the example environment file and update with your settings:
-```bash
-cp .env.example .env
-```
-
-Edit `.env` to add your API keys if needed:
-```
-OPENAI_API_KEY=your-key-here
-HUGGING_FACE_TOKEN=your-token-here
-```
+**Note:** Style transfer works great locally. For image generation on cloud, you'll need to add API credentials to Streamlit Secrets.
 
 ## Usage
 
 ### Running the Application
 
+#### Local Setup (with PyTorch):
 ```bash
 streamlit run app.py
 ```
 
-The app will open in your default browser at `http://localhost:8501`
+Full image generation from text prompts is enabled! The app will open at `http://localhost:8501`
+
+#### Cloud Setup (lightweight):
+```bash
+streamlit run app.py
+```
+
+Style transfer works instantly. Image generation requires API credentials in Streamlit Secrets.
 
 ### Image Generation Tab
 
