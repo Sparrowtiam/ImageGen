@@ -1,23 +1,15 @@
 """
 AI Image Generation and Style Transfer Application
-
-A Streamlit-based GUI application that allows users to:
-1. Generate images from text prompts using Stable Diffusion
-2. Apply artistic styles to uploaded images
-3. Preview, save, and download results
-
-Author: AI Assistant
-Date: 2026
+Simple, working version for Streamlit Cloud
 """
 
 import streamlit as st
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageEnhance
 import io
-import os
 from pathlib import Path
 
 # ============================================================================
-# Page Configuration (MUST be before any st calls)
+# Page Configuration (MUST be first)
 # ============================================================================
 
 st.set_page_config(
@@ -27,46 +19,32 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Try to import PyTorch (for system info display)
-try:
-    import torch
-    HAS_TORCH = True
-except (ImportError, OSError):
-    HAS_TORCH = False
+# ============================================================================
+# Import custom modules with error handling
+# ============================================================================
 
-# Import custom modules
 try:
     from image_generator import initialize_local_generator, generate_image_local, HAS_LOCAL_MODELS
-except (ImportError, OSError):
+except Exception:
     HAS_LOCAL_MODELS = False
 
 try:
     from style_transfer import apply_style_transfer
-except (ImportError, OSError) as e:
-    st.error(f"Error importing style transfer: {e}")
+except Exception:
+    st.error("Error loading style transfer module")
     st.stop()
 
-# ============================================================================
-# Custom CSS Styling
-# ============================================================================
+# Try to import PyTorch
+try:
+    import torch
+    HAS_TORCH = True
+except Exception:
+    HAS_TORCH = False
 
-st.markdown("""
-    <style>
-    .main {
-        padding: 0rem 0rem;
-    }
-    .stButton>button {
-        width: 100%;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
 # ============================================================================
-# Initialize Session State
+# Session State
 # ============================================================================
-
-if 'generator_pipeline' not in st.session_state:
-    st.session_state.generator_pipeline = None
 
 if 'generated_image' not in st.session_state:
     st.session_state.generated_image = None
@@ -74,418 +52,259 @@ if 'generated_image' not in st.session_state:
 if 'stylized_image' not in st.session_state:
     st.session_state.stylized_image = None
 
+if 'input_image' not in st.session_state:
+    st.session_state.input_image = None
+
 
 # ============================================================================
-# Utility Functions
+# Helper Functions
 # ============================================================================
 
 @st.cache_resource
-def load_image_generator():
-    """
-    Load and cache the image generation pipeline (if available locally).
-    
-    Returns:
-        pipeline or None: The initialized pipeline if PyTorch is available
-    """
+def load_generator():
+    """Load image generation pipeline if available"""
     if not HAS_LOCAL_MODELS:
         return None
-    
-    with st.spinner("Loading image generation model... This may take a moment."):
-        try:
-            pipeline = initialize_local_generator()
-            return pipeline
-        except Exception as e:
-            st.error(f"Error loading model: {e}")
-            return None
-
-
-def generate_image_demo(prompt, num_steps=50, guidance=7.5, height=512, width=512):
-    """
-    Generate a demo image using available methods.
-    Tries local generation first, then suggests APIs.
-    
-    Args:
-        prompt (str): Text prompt for image generation
-        num_steps (int): Number of inference steps
-        guidance (float): Guidance scale
-        height (int): Image height
-        width (int): Image width
-    
-    Returns:
-        PIL.Image: Generated image or placeholder
-    """
     try:
-        # Check if local models are available
-        if HAS_LOCAL_MODELS:
-            pipeline = load_image_generator()
-            if pipeline is not None:
-                return generate_image_local(
-                    prompt=prompt,
-                    pipe=pipeline,
-                    num_inference_steps=num_steps,
-                    guidance_scale=guidance,
-                    height=height,
-                    width=width
-                )
-        
-        # If no local models, suggest API integration
-        st.info("💡 **Full Image Generation Available Locally!**")
-        st.info("""
-        To use full features locally:
-        ```bash
-        pip install -r requirements-local.txt
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-        streamlit run app.py
-        ```
-        
-        For Streamlit Cloud, configure API keys in Streamlit Secrets:
-        - [Replicate.com](https://replicate.com)
-        - [Hugging Face Inference API](https://huggingface.co/inference-api)
-        """)
-        
-        # Return placeholder
-        img = Image.new('RGB', (512, 512), color=(73, 109, 137))
-        return img
-    except Exception as e:
-        st.error(f"Error: {e}")
+        return initialize_local_generator()
+    except Exception:
         return None
 
 
-def download_button(image, filename, label="Download Image"):
-    """
-    Create a download button for an image.
+def save_image_local(image, folder, prefix):
+    """Save image to local folder"""
+    try:
+        output_dir = Path(folder)
+        output_dir.mkdir(exist_ok=True)
+        
+        import time
+        timestamp = int(time.time())
+        filename = f"{prefix}_{timestamp}.png"
+        filepath = output_dir / filename
+        
+        image.save(str(filepath))
+        return str(filepath)
+    except Exception as e:
+        st.error(f"Failed to save: {e}")
+        return None
+
+
+def download_button(image, filename):
+    """Create download button for image"""
+    img_bytes = io.BytesIO()
+    image.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
     
-    Args:
-        image (PIL.Image): Image to download
-        filename (str): Name of the file
-        label (str): Button label text
-    """
-    # Convert image to bytes
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)
-    
-    # Create download button
     st.download_button(
-        label=label,
-        data=img_byte_arr.getvalue(),
+        label="⬇️ Download Image",
+        data=img_bytes.getvalue(),
         file_name=filename,
-        mime="image/png"
+        mime="image/png",
+        use_container_width=True
     )
 
 
 # ============================================================================
-# Main Application
+# Main App
 # ============================================================================
 
-def main():
-    """Main application entry point."""
+# Title
+st.title("🎨 AI Image Generator & Style Transfer")
+st.markdown("Create images from text or apply artistic styles to photos")
+st.markdown("---")
+
+# Create tabs
+tab1, tab2 = st.tabs(["🎨 Generate Image", "🖼️ Style Transfer"])
+
+# ========================================================================
+# TAB 1: Image Generation
+# ========================================================================
+
+with tab1:
+    st.header("Generate Images from Text")
     
-    # Header
-    st.title("🎨 AI Image Generator & Style Transfer")
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        prompt = st.text_area(
+            "Enter your prompt:",
+            placeholder="e.g., A serene landscape with mountains and sunset",
+            height=100
+        )
+    
+    with col2:
+        st.markdown("### Settings")
+        num_steps = st.slider("Quality (steps)", 20, 100, 50, 10)
+        guidance = st.slider("Prompt strength", 1.0, 15.0, 7.5, 0.5)
+        size = st.selectbox("Size", ["512x512", "576x576", "640x640"])
+    
+    if st.button("🚀 Generate", use_container_width=True, key="gen_btn"):
+        if not prompt.strip():
+            st.error("Please enter a prompt!")
+        else:
+            with st.spinner("Generating image..."):
+                try:
+                    h, w = map(int, size.split('x'))
+                    
+                    if HAS_LOCAL_MODELS:
+                        pipeline = load_generator()
+                        if pipeline:
+                            image = generate_image_local(
+                                prompt=prompt,
+                                pipe=pipeline,
+                                num_inference_steps=num_steps,
+                                guidance_scale=guidance,
+                                height=h,
+                                width=w
+                            )
+                            st.session_state.generated_image = image
+                            st.success("✅ Generated!")
+                        else:
+                            st.info("💡 Install PyTorch locally for image generation")
+                            st.session_state.generated_image = Image.new('RGB', (h, w), color=(73, 109, 137))
+                    else:
+                        st.info("💡 Image generation requires PyTorch. Style transfer works great!")
+                        st.session_state.generated_image = Image.new('RGB', (h, w), color=(73, 109, 137))
+                        
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+    
     st.markdown("---")
     
-    # Create tabs for different features
-    tab1, tab2 = st.tabs(["Generate Image", "Style Transfer"])
+    if st.session_state.generated_image:
+        col_img, col_btn = st.columns([3, 1])
+        
+        with col_img:
+            st.image(st.session_state.generated_image, use_column_width=True)
+        
+        with col_btn:
+            download_button(
+                st.session_state.generated_image,
+                f"generated_{st.session_state.generated_image.width}x{st.session_state.generated_image.height}.png"
+            )
+            
+            if st.button("💾 Save", use_container_width=True):
+                path = save_image_local(st.session_state.generated_image, "generated_images", "img")
+                if path:
+                    st.success(f"✅ Saved to `{path}`")
+
+# ========================================================================
+# TAB 2: Style Transfer
+# ========================================================================
+
+with tab2:
+    st.header("Apply Artistic Styles")
     
-    # ========================================================================
-    # TAB 1: Image Generation
-    # ========================================================================
+    col1, col2 = st.columns([2, 1])
     
-    with tab1:
-        st.header("✨ Generate Images from Text Prompts")
-        st.markdown("Describe what you want to create, and the AI will generate an image for you.")
+    with col1:
+        uploaded_file = st.file_uploader(
+            "Upload an image",
+            type=["jpg", "jpeg", "png", "bmp", "gif"]
+        )
         
-        # Create two columns for better layout
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            # Text prompt input
-            prompt = st.text_area(
-                "Enter your prompt:",
-                placeholder="e.g., A serene landscape with mountains, sunset, and a calm lake",
-                height=100
-            )
-        
-        with col2:
-            st.markdown("### Settings")
-            
-            # Inference steps slider
-            num_steps = st.slider(
-                "Quality (inference steps)",
-                min_value=20,
-                max_value=100,
-                value=50,
-                step=10,
-                help="Higher values produce better quality but take longer"
-            )
-            
-            # Guidance scale slider
-            guidance = st.slider(
-                "Prompt guidance",
-                min_value=1.0,
-                max_value=15.0,
-                value=7.5,
-                step=0.5,
-                help="How closely the image follows your prompt"
-            )
-            
-            # Image dimensions
-            size_option = st.selectbox(
-                "Image size",
-                ["512x512", "576x576", "640x640"],
-                help="Larger images take longer to generate"
-            )
-            height, width = map(int, size_option.split('x'))
-        
-        # Generate button
-        if st.button("🚀 Generate Image", use_container_width=True, key="gen_button"):
-            if not prompt.strip():
-                st.error("Please enter a prompt!")
-            else:
-                with st.spinner("🎨 Generating your image..."):
-                    try:
-                        # Generate the image
-                        image = generate_image_demo(
-                            prompt=prompt,
-                            num_steps=num_steps,
-                            guidance=guidance,
-                            height=height,
-                            width=width
-                        )
-                        
-                        # Store in session state
-                        st.session_state.generated_image = image
-                        st.success("Image generated successfully!")
-                        
-                    except Exception as e:
-                        st.error(f"Error generating image: {e}")
-        
-        # Display generated image
-        st.markdown("---")
-        
-        if st.session_state.generated_image is not None:
-            col_img, col_action = st.columns([3, 1])
-            
-            with col_img:
-                st.subheader("Generated Image")
-                st.image(st.session_state.generated_image, use_column_width=True)
-            
-            with col_action:
-                st.subheader("Actions")
-                
-                # Download button
-                download_button(
-                    st.session_state.generated_image,
-                    f"generated_{st.session_state.generated_image.width}x{st.session_state.generated_image.height}.png",
-                    "⬇️ Download Image"
-                )
-                
-                # Save to local folder button
-                if st.button("💾 Save Locally", use_container_width=True):
-                    output_dir = Path("generated_images")
-                    output_dir.mkdir(exist_ok=True)
-                    
-                    # Generate filename
-                    import time
-                    timestamp = int(time.time())
-                    filename = f"image_{timestamp}.png"
-                    filepath = output_dir / filename
-                    
-                    # Save the image
-                    try:
-                        st.session_state.generated_image.save(str(filepath))
-                        st.success(f"✅ Saved to `{filepath}`")
-                    except Exception as e:
-                        st.error(f"Failed to save image: {e}")
+        if uploaded_file:
+            image = Image.open(uploaded_file)
+            st.session_state.input_image = image
+            st.image(image, caption="Uploaded Image", use_column_width=True)
     
-    # ========================================================================
-    # TAB 2: Style Transfer
-    # ========================================================================
+    with col2:
+        st.markdown("### Settings")
+        
+        styles = ['van_gogh', 'monet', 'picasso', 'dali', 'warhol', 'sepia']
+        style = st.selectbox("Style:", styles)
+        
+        strength = st.slider("Intensity", 0.1, 1.0, 0.8, 0.1)
     
-    with tab2:
-        st.header("🖼️ Apply Artistic Styles to Your Images")
-        st.markdown("Upload an image and choose an artistic style to apply.")
-        
-        # Create columns for upload and settings
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            # File uploader
-            uploaded_file = st.file_uploader(
-                "Upload an image",
-                type=["jpg", "jpeg", "png", "bmp", "gif"],
-                help="Select an image file to apply style transfer"
-            )
-            
-            # Display uploaded image
-            if uploaded_file is not None:
-                input_image = Image.open(uploaded_file)
-                st.image(input_image, caption="Uploaded Image", use_column_width=True)
-        
-        with col2:
-            st.markdown("### Settings")
-            
-            # Style selector
-            style_options = [
-                'van_gogh',
-                'monet',
-                'picasso',
-                'dali',
-                'warhol',
-                'sepia'
-            ]
-            
-            selected_style = st.selectbox(
-                "Select artistic style:",
-                style_options,
-                help="Choose a famous artist's style to apply"
-            )
-            
-            # Style strength slider
-            style_strength = st.slider(
-                "Style intensity",
-                min_value=0.1,
-                max_value=1.0,
-                value=0.8,
-                step=0.1,
-                help="How strongly the style is applied (0.1 = subtle, 1.0 = strong)"
-            )
-            
-            st.markdown(f"**Selected Style:** {selected_style.replace('_', ' ').title()}")
-        
-        # Apply style button
-        if uploaded_file is not None:
-            if st.button("✨ Apply Style", use_container_width=True, key="style_button"):
-                with st.spinner(f"Applying {selected_style} style..."):
-                    try:
-                        # Apply style transfer
-                        stylized = apply_style_transfer(input_image, selected_style, strength=style_strength)
-                        
-                        # Store in session state
-                        st.session_state.stylized_image = stylized
-                        st.success("Style applied successfully!")
-                        
-                    except Exception as e:
-                        st.error(f"Error applying style: {e}")
-        
-        # Display stylized image
-        st.markdown("---")
-        
-        if st.session_state.stylized_image is not None:
-            col_before, col_after = st.columns(2)
-            
-            with col_before:
-                st.subheader("Original Image")
-                st.image(input_image, use_column_width=True)
-            
-            with col_after:
-                st.subheader("Stylized Image")
-                st.image(st.session_state.stylized_image, use_column_width=True)
-            
-            # Download and save options
-            st.markdown("---")
-            col_dl1, col_dl2 = st.columns(2)
-            
-            with col_dl1:
-                download_button(
-                    st.session_state.stylized_image,
-                    f"stylized_{selected_style}.png",
-                    "⬇️ Download Stylized Image"
-                )
-            
-            with col_dl2:
-                if st.button("💾 Save Locally", use_container_width=True, key="save_stylized"):
-                    output_dir = Path("stylized_images")
-                    output_dir.mkdir(exist_ok=True)
-                    
-                    import time
-                    timestamp = int(time.time())
-                    filename = f"stylized_{selected_style}_{timestamp}.png"
-                    filepath = output_dir / filename
-                    
-                    try:
-                        st.session_state.stylized_image.save(str(filepath))
-                        st.success(f"✅ Saved to `{filepath}`")
-                    except Exception as e:
-                        st.error(f"Failed to save image: {e}")
-    
-    # ========================================================================
-    # Sidebar Information
-    # ========================================================================
-    
-    with st.sidebar:
-        st.markdown("## 📋 Information")
-        
-        st.markdown("""
-        ### Features
-        - 🎨 **Image Generation**: Create images from text prompts
-        - 🖼️ **Style Transfer**: Apply artistic styles to your images
-        - ⬇️ **Download**: Save results to your computer
-        - 💾 **Local Storage**: Save images to the app folders
-        
-        ### How to Use
-        
-        **Image Generation:**
-        1. Enter a detailed text prompt
-        2. Adjust quality and guidance settings
-        3. Click "Generate Image"
-        4. Download or save the result
-        
-        **Style Transfer:**
-        1. Upload an image
-        2. Select an artistic style
-        3. Adjust style intensity
-        4. Click "Apply Style"
-        5. Download or save the stylized result
-        
-        ### Tips
-        - Be specific in your prompts for better results
-        - Use higher inference steps for better quality (slower)
-        - Adjust guidance scale to control how much the model follows your prompt
-        - Try different styles to see which works best with your images
-        
-        ### System Info
-        """)
-        
-        # Display GPU availability
-        if HAS_TORCH:
+    if st.session_state.input_image and st.button("✨ Apply Style", use_container_width=True, key="style_btn"):
+        with st.spinner(f"Applying {style}..."):
             try:
-                if torch.cuda.is_available():
-                    st.success(f"✅ GPU Available: {torch.cuda.get_device_name(0)}")
-                else:
-                    st.info("⚠️ Using CPU (GPU would be faster)")
-            except:
-                st.info("⚠️ Using CPU")
-        else:
-            st.info("⚠️ CPU Mode (PyTorch not installed)")
+                stylized = apply_style_transfer(
+                    st.session_state.input_image,
+                    style,
+                    strength=strength
+                )
+                st.session_state.stylized_image = stylized
+                st.success("✅ Done!")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+    
+    st.markdown("---")
+    
+    if st.session_state.stylized_image:
+        col_before, col_after = st.columns(2)
+        
+        with col_before:
+            st.subheader("Original")
+            st.image(st.session_state.input_image, use_column_width=True)
+        
+        with col_after:
+            st.subheader("Stylized")
+            st.image(st.session_state.stylized_image, use_column_width=True)
         
         st.markdown("---")
-        st.markdown("### System Info")
+        col_d1, col_d2 = st.columns(2)
         
-        if HAS_LOCAL_MODELS:
-            st.success("✅ PyTorch Available - Full image generation enabled!")
-        else:
-            st.warning("⚠️ PyTorch not installed - Using lightweight mode")
-            st.info("""
-            **For full features locally:**
-            ```bash
-            pip install -r requirements-local.txt
-            pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-            ```
-            """)
+        with col_d1:
+            download_button(st.session_state.stylized_image, f"stylized_{style}.png")
         
-        st.markdown("""
-        **Setup Options:**
-        - **Local (Full Features)**: Install requirements-local.txt + PyTorch
-        - **Streamlit Cloud (Lightweight)**: Uses requirements.txt only
-        - **API Integration**: Configure Replicate/Hugging Face tokens in Secrets
-        """)
+        with col_d2:
+            if st.button("💾 Save", use_container_width=True, key="save_style"):
+                path = save_image_local(st.session_state.stylized_image, "stylized_images", f"stylized_{style}")
+                if path:
+                    st.success(f"✅ Saved to `{path}`")
 
+# ========================================================================
+# Sidebar
+# ========================================================================
 
-# ============================================================================
-# Application Entry Point
-# ============================================================================
-
-if __name__ == "__main__":
-    main()
+with st.sidebar:
+    st.markdown("## ℹ️ Info")
+    
+    st.markdown("""
+    ### Features
+    - 🎨 **Image Generation**: Create from text
+    - 🖼️ **Style Transfer**: 6 artistic styles
+    - ⬇️ **Download**: Save to computer
+    - 💾 **Local Save**: Store in folders
+    
+    ### How to Use
+    **Generate:**
+    1. Enter a text prompt
+    2. Adjust settings
+    3. Click "Generate"
+    
+    **Style Transfer:**
+    1. Upload an image
+    2. Pick a style
+    3. Click "Apply Style"
+    
+    ### Available Styles
+    - Van Gogh
+    - Monet
+    - Picasso
+    - Dali
+    - Warhol
+    - Sepia
+    """)
+    
+    st.markdown("---")
+    st.markdown("### Status")
+    
+    if HAS_LOCAL_MODELS:
+        st.success("✅ PyTorch ready - Full generation enabled")
+    else:
+        st.warning("⚠️ PyTorch not available")
+        st.info("For image generation locally:\n```\npip install -r requirements-local.txt\n```")
+    
+    if HAS_TORCH:
+        try:
+            if torch.cuda.is_available():
+                st.success(f"✅ GPU: {torch.cuda.get_device_name(0)}")
+            else:
+                st.info("ℹ️ CPU mode")
+        except:
+            st.info("ℹ️ CPU mode")
+    
+    st.markdown("---")
+    st.markdown("**Repository**: [GitHub](https://github.com/Sparrowtiam/ImageGen)")
